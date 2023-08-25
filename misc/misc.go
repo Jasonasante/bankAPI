@@ -18,7 +18,7 @@ func RangeIn(low, hi int64) int64 {
 }
 
 // this receives a password and encrypts it, protect a user's password in the database.
-func hashPassword(password string) (string, error) {
+func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err
 }

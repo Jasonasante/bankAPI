@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Jasonasante/bankAPI.git/misc"
+
 	"github.com/gorilla/mux"
 )
 
@@ -31,11 +33,13 @@ func makeHttpHandler(f apiFunc) http.HandlerFunc {
 
 type APIServer struct {
 	listenAddr string
+	store      Storage
 }
 
-func NewAPIServer(listenAddr string) *APIServer {
+func NewAPIServer(listenAddr string, store Storage) *APIServer {
 	return &APIServer{
 		listenAddr,
+		store,
 	}
 }
 
@@ -74,7 +78,21 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	acctRequest := CreateAccountRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&acctRequest); err != nil {
+		return err
+	}
+	password, err := misc.HashPassword(acctRequest.Password)
+	if err != nil {
+		fmt.Println("could not hash password")
+		log.Fatal(err)
+	}
+	account := CreateAccount(acctRequest.FirstName, acctRequest.LastName, acctRequest.Username, password)
+	if err := s.store.CreateAccount(account); err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, account)
 }
 
 func (s *APIServer) handleReadAccount(w http.ResponseWriter, r *http.Request) error {
