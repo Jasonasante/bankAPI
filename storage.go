@@ -4,16 +4,23 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"time"
 
+	"github.com/Jasonasante/bankAPI.git/account"
+	"github.com/Jasonasante/bankAPI.git/misc"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type Storage interface {
-	CreateAccount(*Account) error
-	DeleteAccount(*Account) error
-	UpdateAccount(*Account) error
-	GetAccountByID(int) (*Account, error)
+	CreateAccount(*account.Account) error
+	DeleteAccount(int) error
+	UpdateAccount(*account.Account) error
+	GetAccountByID(int) (*account.Account, error)
+	GetAllAccounts() ([]*account.Account, error)
+	VerifyLogin(account.LoginRequest) (*account.Account, error)
+}
+
+type QueryResult interface {
+	Scan(dest ...interface{}) error
 }
 
 type SQLiteStore struct {
@@ -38,12 +45,12 @@ func (s *SQLiteStore) Init() error {
 func (s *SQLiteStore) CreateAccountTable() error {
 	_, acctTblErr := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS "account" (
-			"id" SERIAL PRIMARY KEY,
+			"id" INTEGER PRIMARY KEY AUTOINCREMENT,
 			"first_name" VARCHAR(64),
 			"last_name" VARCHAR(64),
 			"username" VARCHAR(64) NOT NULL UNIQUE,
 			"password" VARCHAR(64) NOT NULL,
-			"bank_number" NUMBER,
+			"bank_number" NUMBER NOT NULL UNIQUE,
 			"balance" NUMBER,
 			"created_at" TIMESTAMP
 		)`,
@@ -54,24 +61,22 @@ func (s *SQLiteStore) CreateAccountTable() error {
 	return nil
 }
 
-func (s *SQLiteStore) CreateAccount(acc *Account) error {
+func (s *SQLiteStore) CreateAccount(acc *account.Account) error {
 	stmt, err := s.db.Prepare(`
 	INSERT INTO "account" (
-	"id", 
 	"first_name",
 	"last_name",
 	"username",
 	"password",
 	"bank_number" ,
 	"balance" ,
-	"created_at") values (?, ?, ?, ?, ?, ?, ?,?)
+	"created_at") values ( ?, ?, ?, ?, ?, ?,?)
 	`)
 	if err != nil {
 		fmt.Println("error preparing account table:", err)
 		return err
 	}
 	_, errorWithTable := stmt.Exec(
-		acc.ID,
 		acc.FirstName,
 		acc.LastName,
 		acc.Username,
@@ -81,48 +86,87 @@ func (s *SQLiteStore) CreateAccount(acc *Account) error {
 		acc.CreatedAt,
 	)
 	if errorWithTable != nil {
-		fmt.Println("error adding to accout table:", errorWithTable)
+		fmt.Println("error adding to account table:", errorWithTable)
 		return errorWithTable
 	}
-	s.displayInfo("account")
 	return nil
 }
 
-func (s *SQLiteStore) DeleteAccount(*Account) error {
-	return nil
-}
-
-func (s *SQLiteStore) UpdateAccount(*Account) error {
-	return nil
-}
-
-func (s *SQLiteStore) GetAccountByID(int) (*Account, error) {
-	return nil, nil
-}
-
-func (s *SQLiteStore) displayInfo(table string) {
-	switch table {
-	case "account":
-		row, err := s.db.Query(`SELECT * FROM "account"`)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		defer row.Close()
-		for row.Next() { // Iterate and fetch the records from result cursor
-			// account := new(Account)
-			var (
-				id, bankNumber, balance int
-				firstName, lastName     string
-				username, password      string
-				createdAt               time.Time
-			)
-			err = row.Scan(&id, &firstName, &lastName, &username, &password, &bankNumber, &balance, &createdAt)
-			if err != nil {
-				fmt.Println("error with scanning rows in", err)
-				// return err
-			}
-			fmt.Println("id:=", id, "first name:=", firstName, "last name:=", lastName, "username:=", username, "password:=", password, "bank number:=", bankNumber, "balance:=", balance, "created at:=", createdAt)
-		}
+func (s *SQLiteStore) DeleteAccount(id int) error {
+	_, err := s.db.Exec(`DELETE FROM account WHERE id = ?`, id)
+	if err != nil {
+		return err
 	}
+	return nil
+}
+
+func (s *SQLiteStore) UpdateAccount(*account.Account) error {
+	return nil
+}
+
+func (s *SQLiteStore) GetAccountByID(id int) (*account.Account, error) {
+	account, err := ScanIntoAccount(s.db.QueryRow(`SELECT * FROM "account" WHERE id = ?`, id))
+	if err != nil {
+		fmt.Println("error retrieving account by ID from accounts table")
+		return nil, err
+	}
+
+	return account, nil
+}
+
+func (s *SQLiteStore) GetAllAccounts() ([]*account.Account, error) {
+	accountArray := []*account.Account{}
+	row, err := s.db.Query(`SELECT * FROM "account"`)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer row.Close()
+	for row.Next() {
+		account, err := ScanIntoAccount(row)
+		if err != nil {
+			fmt.Println("error with scanning rows in account table", err)
+			return nil, err
+		}
+		accountArray = append(accountArray, account)
+	}
+	return accountArray, nil
+}
+
+func (s *SQLiteStore) VerifyLogin(login account.LoginRequest) (*account.Account, error) {
+	account, err := ScanIntoAccount(s.db.QueryRow(`SELECT * FROM "account" WHERE username= ?`, login.Username))
+	if err != nil {
+		return nil, fmt.Errorf("Account Does Not Exist")
+	}
+	if !misc.CheckPasswordHash(login.Password, account.Password) {
+		return nil, fmt.Errorf("Access Denied")
+	}
+	return account, nil
+}
+
+func ScanIntoAccount(row QueryResult) (*account.Account, error) {
+	account := new(account.Account)
+	err := row.Scan(
+		&account.ID,
+		&account.FirstName,
+		&account.LastName,
+		&account.Username,
+		&account.Password,
+		&account.BankNumber,
+		&account.Balance,
+		&account.CreatedAt)
+	PrintAccount(account)
+	return account, err
+}
+
+func PrintAccount(account *account.Account) {
+	fmt.Println(
+		"id:=", account.ID,
+		"first name:=", account.FirstName,
+		"last name:=", account.LastName,
+		"username:=", account.Username,
+		"password:=", account.Password,
+		"bank number:=", account.BankNumber,
+		"balance:=", account.Balance,
+		"created at:=", account.CreatedAt)
 }
