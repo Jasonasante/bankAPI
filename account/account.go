@@ -24,6 +24,15 @@ type CreateAccountRequest struct {
 	CreatedAt time.Time `json:"created-at"`
 }
 
+type UpdateAccountRequest struct {
+	FirstName       string `json:"first-name"`
+	LastName        string `json:"last-name"`
+	CurrentUsername string `json:"current-username"`
+	Username        string `json:"username"`
+	CurrentPassword string `json:"current-password"`
+	Password        string `json:"password"`
+}
+
 type Account struct {
 	ID         int       `json:"id"`
 	FirstName  string    `json:"first-name"`

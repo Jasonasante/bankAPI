@@ -96,6 +96,9 @@ func (s *APIServer) handleGetAccountbyID(w http.ResponseWriter, r *http.Request)
 
 	case "DELETE":
 		return s.handleDeleteAccount(w, r)
+
+	case "PATCH":
+		return s.handleUpdateAccount(w, r)
 	}
 	return fmt.Errorf("method not allowed : %v", r.Method)
 }
@@ -150,7 +153,37 @@ func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *APIServer) handleUpdateAccount(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	updateReq := account.UpdateAccountRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
+		return err
+	}
+	id, err := misc.GetID(r)
+	if err != nil {
+		fmt.Println("Invalid ID given!!!")
+		return err
+	}
+
+	currentUser, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return fmt.Errorf("Account Does Not Exist")
+	}
+	if currentUser.Username != updateReq.CurrentUsername || !misc.CheckPasswordHash(updateReq.CurrentPassword, currentUser.Password) {
+		return fmt.Errorf("Access Denied")
+	}
+
+	updateReq.Username = misc.DefaultValue(updateReq.Username, currentUser.Username)
+	updateReq.Password, err = misc.HashPassword(misc.DefaultValue(updateReq.Password, currentUser.Password))
+	if err != nil {
+		return fmt.Errorf("Could Not Encrypt Password")
+	}
+
+	updateReq.FirstName = misc.DefaultValue(updateReq.FirstName, currentUser.FirstName)
+	updateReq.LastName = misc.DefaultValue(updateReq.LastName, currentUser.LastName)
+	if err := s.store.UpdateAccount(id, &updateReq); err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, updateReq)
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {

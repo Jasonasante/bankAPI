@@ -39,3 +39,10 @@ func GetID(r *http.Request) (int, error) {
 	vars := mux.Vars(r) // Extract route variables and returns it as a map[string]string
 	return strconv.Atoi(vars["id"])
 }
+
+func DefaultValue(value, defaultValue string) string {
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}

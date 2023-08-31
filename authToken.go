@@ -36,8 +36,6 @@ func withJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
 			return
 		}
 		claims := token.Claims.(jwt.MapClaims)
-		fmt.Println(claims)
-		fmt.Printf("%T\n", int64(math.Round(claims["account-number"].(float64))))
 		if account.BankNumber != int64(math.Round(claims["account-number"].(float64))) {
 			WriteJSON(w, http.StatusUnauthorized, apiError{Error: "Permission Denied"})
 			return

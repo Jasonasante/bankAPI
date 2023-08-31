@@ -13,7 +13,7 @@ import (
 type Storage interface {
 	CreateAccount(*account.Account) error
 	DeleteAccount(int) error
-	UpdateAccount(*account.Account) error
+	UpdateAccount(id int, update *account.UpdateAccountRequest) error
 	GetAccountByID(int) (*account.Account, error)
 	GetAllAccounts() ([]*account.Account, error)
 	VerifyLogin(account.LoginRequest) (*account.Account, error)
@@ -93,14 +93,19 @@ func (s *SQLiteStore) CreateAccount(acc *account.Account) error {
 }
 
 func (s *SQLiteStore) DeleteAccount(id int) error {
-	_, err := s.db.Exec(`DELETE FROM account WHERE id = ?`, id)
+	_, err := s.db.Exec(`DELETE FROM "account" WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *SQLiteStore) UpdateAccount(*account.Account) error {
+func (s *SQLiteStore) UpdateAccount(id int, update *account.UpdateAccountRequest) error {
+	_, err := s.db.Exec(`UPDATE account SET "first_name" = ?, "last_name" = ?, "username" = ?, "password" = ? WHERE "id" = ?`, update.FirstName, update.LastName, update.Username, update.Password, id)
+	if err != nil {
+		fmt.Printf("Could Not Update Account %v", err)
+		return err
+	}
 	return nil
 }
 
@@ -144,6 +149,11 @@ func (s *SQLiteStore) VerifyLogin(login account.LoginRequest) (*account.Account,
 	return account, nil
 }
 
+// func (s *SQLiteStore) CheckIfUsernameAlreadyExists(username string) bool {
+// 	_, err := ScanIntoAccount(s.db.QueryRow(`SELECT * FROM "account" WHERE username = ?`, username))
+// 	return err == nil
+// }
+
 func ScanIntoAccount(row QueryResult) (*account.Account, error) {
 	account := new(account.Account)
 	err := row.Scan(
@@ -155,7 +165,7 @@ func ScanIntoAccount(row QueryResult) (*account.Account, error) {
 		&account.BankNumber,
 		&account.Balance,
 		&account.CreatedAt)
-	PrintAccount(account)
+	// PrintAccount(account)
 	return account, err
 }
 
