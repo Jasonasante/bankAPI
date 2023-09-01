@@ -46,3 +46,10 @@ func DefaultValue(value, defaultValue string) string {
 	}
 	return value
 }
+
+func DepositOrWithdrawal(value int) string {
+	if value < 0 {
+		return "withdrawal"
+	}
+	return "deposit"
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Jasonasante/bankAPI.git/account"
 	"github.com/Jasonasante/bankAPI.git/misc"
@@ -54,7 +55,7 @@ func (s *APIServer) Run() {
 	router.HandleFunc("/login", makeHttpHandler(s.handleLogin))
 	router.HandleFunc("/account", makeHttpHandler(s.handleAccount))
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHttpHandler(s.handleGetAccountbyID), s.store))
-	router.HandleFunc("/transfer", makeHttpHandler(s.handleTransferAccount))
+	router.HandleFunc("/transfer/{id}", withJWTAuth(makeHttpHandler(s.handleTransferAccount), s.store))
 	log.Println("server opened http://localhost" + s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
 }
@@ -198,13 +199,93 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 	return WriteJSON(w, http.StatusOK, map[string]int{"deleted": id})
 }
 
-//
-func (s *APIServer) handleTransferAccount(w http.ResponseWriter, r *http.Request) error {
+func (s *APIServer) handleMyBalance(w http.ResponseWriter, r *http.Request) error {
+	id, err := misc.GetID(r)
+	if err != nil {
+		return fmt.Errorf("Permission Denied")
+	}
+
+	myBalance, err := s.store.GetAccountBalance(id)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, myBalance)
+}
+
+func (s *APIServer) handleDepositsAndWithdrawals(w http.ResponseWriter, r *http.Request) error {
 	transferRequest := transfer.TransferRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&transferRequest); err != nil {
 		return err
 	}
 	defer r.Body.Close()
+	id, err := misc.GetID(r)
+	if err != nil {
+		return fmt.Errorf("Permission Denied")
+	}
+	currentUser, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return fmt.Errorf("Account Does Not Exist")
+	}
+	myBalance, err := s.store.DepositWithdrawIntoMyAccount(id, &transferRequest)
+	if err != nil {
+		return err
+	}
+	time := time.Now().UTC()
+	addTransfer := transfer.CreateTransfer(id, id, transferRequest.Amount, currentUser.Balance, myBalance.Balance, misc.DepositOrWithdrawal(transferRequest.Amount), time)
+	s.store.CreateTransfer(addTransfer)
+	return WriteJSON(w, http.StatusOK, myBalance)
+}
 
-	return WriteJSON(w, http.StatusOK, transferRequest)
+func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
+	transferRequest := transfer.TransferRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&transferRequest); err != nil {
+		return err
+	}
+	defer r.Body.Close()
+	id, err := misc.GetID(r)
+	if err != nil {
+		return fmt.Errorf("Permission Denied")
+	}
+
+	currentUser, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return fmt.Errorf("Account Does Not Exist")
+	}
+	recipientUser, err := s.store.GetAccountByID(transferRequest.ToAccount)
+	if err != nil {
+		return fmt.Errorf("Account Does Not Exist")
+	}
+
+	transferResponse, err := s.store.Transfer(id, &transferRequest)
+	if err != nil {
+		return err
+	}
+	time := time.Now().UTC()
+	addTransferFrom := transfer.CreateTransfer(id, transferRequest.ToAccount, transferRequest.Amount, currentUser.Balance, transferResponse.Account.Balance, "withdrawal", time)
+	addTransferTo := transfer.CreateTransfer(id, transferRequest.ToAccount, transferRequest.Amount, recipientUser.Balance, recipientUser.Balance+int64(transferRequest.Amount), "deposit", time)
+	if err := s.store.CreateTransfer(addTransferFrom); err != nil {
+		return fmt.Errorf("Could Not Add Transaction To Table")
+	}
+	if err := s.store.CreateTransfer(addTransferTo); err != nil {
+		return fmt.Errorf("Could Not Add Transaction To Table")
+	}
+	return WriteJSON(w, http.StatusOK, transferResponse)
+}
+
+//
+func (s *APIServer) handleTransferAccount(w http.ResponseWriter, r *http.Request) error {
+
+	switch r.Method {
+	case "GET":
+		// get current user balance
+		return s.handleMyBalance(w, r)
+	case "PATCH":
+		// withdrawal/deposit into user account
+		return s.handleDepositsAndWithdrawals(w, r)
+	case "POST":
+		// transfer from user to recipient
+		return s.handleTransfer(w, r)
+	}
+
+	return fmt.Errorf("method not allowed : %v", r.Method)
 }
