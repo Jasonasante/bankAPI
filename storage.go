@@ -22,6 +22,8 @@ type Storage interface {
 	GetAccountBalance(id int) (*transfer.MyBalance, error)
 	DepositWithdrawIntoMyAccount(id int, deposit *transfer.TransferRequest) (*transfer.MyBalance, error)
 	Transfer(id int, request *transfer.TransferRequest) (*transfer.TransferResponse, error)
+	GetAllTransfers() ([]*transfer.Transfer, error)
+	GetMyTransfers(id int) ([]*transfer.Transfer, error)
 }
 
 type QueryResult interface {
@@ -237,6 +239,44 @@ func (s *SQLiteStore) CreateTransfer(trans *transfer.Transfer) error {
 	return nil
 }
 
+func (s *SQLiteStore) GetAllTransfers() ([]*transfer.Transfer, error) {
+	transferArray := []*transfer.Transfer{}
+	row, err := s.db.Query(`SELECT * FROM "transfer"`)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer row.Close()
+	for row.Next() {
+		transfer, err := ScanIntoTransfer(row)
+		if err != nil {
+			fmt.Println("error with scanning rows in transfer table", err)
+			return nil, err
+		}
+		transferArray = append(transferArray, transfer)
+	}
+	return transferArray, nil
+}
+
+func (s *SQLiteStore) GetMyTransfers(id int) ([]*transfer.Transfer, error) {
+	transferArray := []*transfer.Transfer{}
+	row, err := s.db.Query(`SELECT * FROM "transfer" WHERE ("from" = ? AND "action" = 'withdrawal') OR ("to" = ? AND "action" = 'deposit') OR ("from" = ? AND "to"= ?)`, id, id, id, id)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer row.Close()
+	for row.Next() {
+		transfer, err := ScanIntoTransfer(row)
+		if err != nil {
+			fmt.Println("error with scanning rows in transfer table", err)
+			return nil, err
+		}
+		transferArray = append(transferArray, transfer)
+	}
+	return transferArray, nil
+}
+
 func (s *SQLiteStore) GetAccountBalance(id int) (*transfer.MyBalance, error) {
 	account, err := ScanIntoAccount(s.db.QueryRow(`SELECT * FROM "account" WHERE id = ?`, id))
 	if err != nil {
@@ -350,4 +390,19 @@ func PrintAccount(account *account.Account) {
 		"bank number:=", account.BankNumber,
 		"balance:=", account.Balance,
 		"created at:=", account.CreatedAt)
+}
+
+func ScanIntoTransfer(row QueryResult) (*transfer.Transfer, error) {
+	transfer := new(transfer.Transfer)
+	err := row.Scan(
+		&transfer.ID,
+		&transfer.From,
+		&transfer.To,
+		&transfer.Amount,
+		&transfer.Action,
+		&transfer.PreviousBalance,
+		&transfer.CurrentBalance,
+		&transfer.CompletedAt)
+	// PrintAccount(account)
+	return transfer, err
 }

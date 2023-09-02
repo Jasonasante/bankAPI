@@ -19,6 +19,7 @@ type MyBalance struct {
 }
 
 type Transfer struct {
+	ID              int       `json:"id"`
 	From            int       `json:"from"`
 	To              int       `json:"to"`
 	Amount          int       `json:"amount"`
@@ -26,6 +27,11 @@ type Transfer struct {
 	PreviousBalance int64     `json:"previous-balance"`
 	CurrentBalance  int64     `json:"current-balance"`
 	CompletedAt     time.Time `json:"completed-at"`
+}
+
+type MyTransfers struct {
+	MyBalance   MyBalance   `json:"my-balance"`
+	MyTransfers []*Transfer `json:"my-transfers"`
 }
 
 func CreateTransfer(from, to, amount int, previous, new int64, action string, time time.Time) *Transfer {
@@ -36,6 +42,6 @@ func CreateTransfer(from, to, amount int, previous, new int64, action string, ti
 		Action:          action,
 		PreviousBalance: previous,
 		CurrentBalance:  new,
-		CompletedAt:    time,
+		CompletedAt:     time,
 	}
 }

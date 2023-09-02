@@ -55,6 +55,7 @@ func (s *APIServer) Run() {
 	router.HandleFunc("/login", makeHttpHandler(s.handleLogin))
 	router.HandleFunc("/account", makeHttpHandler(s.handleAccount))
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHttpHandler(s.handleGetAccountbyID), s.store))
+	router.HandleFunc("/transfer", makeHttpHandler(s.handleTransfers))
 	router.HandleFunc("/transfer/{id}", withJWTAuth(makeHttpHandler(s.handleTransferAccount), s.store))
 	log.Println("server opened http://localhost" + s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
@@ -199,6 +200,17 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 	return WriteJSON(w, http.StatusOK, map[string]int{"deleted": id})
 }
 
+//
+// Transfers
+//
+func (s *APIServer) handleTransfers(w http.ResponseWriter, r *http.Request) error {
+	allTransfers, err := s.store.GetAllTransfers()
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, allTransfers)
+}
+
 func (s *APIServer) handleMyBalance(w http.ResponseWriter, r *http.Request) error {
 	id, err := misc.GetID(r)
 	if err != nil {
@@ -209,7 +221,15 @@ func (s *APIServer) handleMyBalance(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	return WriteJSON(w, http.StatusOK, myBalance)
+	transactions, err := s.store.GetMyTransfers(id)
+	if err != nil {
+		return err
+	}
+	myTransfers := transfer.MyTransfers{
+		MyBalance:   *myBalance,
+		MyTransfers: transactions,
+	}
+	return WriteJSON(w, http.StatusOK, myTransfers)
 }
 
 func (s *APIServer) handleDepositsAndWithdrawals(w http.ResponseWriter, r *http.Request) error {
